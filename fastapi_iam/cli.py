@@ -1,13 +1,14 @@
 from argparse import ArgumentParser
-import asyncpg
-from fastapi_iam.services import PasswordHasher
-from fastapi_iam.respository import UserRepository
 from fastapi_iam.models import UserCreate
+from fastapi_iam.models import UserRepository
+from fastapi_iam.auth import PasswordHasher
+from getpass import getpass
+
 import asyncio
+import asyncpg
 import os
 import sys
 import textwrap
-from getpass import getpass
 
 parser = ArgumentParser()
 parser.add_argument("--dsn", help="postgres-dsn")
@@ -34,6 +35,7 @@ async def create_user():
         )
         sys.exit(1)
 
+    org_id = int(input("Org_id: "))
     email = input("Email: ").strip()
     password = getpass("Password: ").strip()
     repassword = getpass("Password Again: ").strip()
@@ -51,6 +53,7 @@ async def create_user():
     hasher = PasswordHasher()
 
     user = UserCreate(
+        org_id=org_id,
         email=email,
         password=await hasher.hash_password(password),
         is_staff=is_staff,

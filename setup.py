@@ -8,7 +8,7 @@ with open("README.md", "r") as f:
 
 setup(
     name="fastapi_iam",
-    version="1.0.0",
+    version="0.1.0",
     url="https://github.com/jordic/fastapi_iam",
     license="MIT",
     author="Jordi collell",
@@ -19,9 +19,11 @@ setup(
     packages=find_packages(exclude=("tests",)),
     install_requires=[
         "fastapi",
-        "fastapi_asyncpg",
+        "fastapi_asyncpg==1.0.1",
         "argon2-cffi",
-        "python-jose[cryptography]",
+        "PyJWT==1.6.0",
+        "python-slugify",
+        "python-multipart",
     ],
     package_data={"fastapi_iam": ["py.typed"]},
     extras_require={
@@ -44,7 +46,6 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",

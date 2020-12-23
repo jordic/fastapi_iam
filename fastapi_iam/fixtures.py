@@ -5,6 +5,9 @@ from fastapi_asyncpg import create_pool_test
 from fastapi_iam import configure_iam
 from pathlib import Path
 from pytest_docker_fixtures import images
+from async_asgi_testclient import TestClient
+
+from . import models
 
 import asyncpg
 import pytest
@@ -32,7 +35,7 @@ async def pool(pg):
     await initialize_db(settings, conn)
 
     pool = await create_pool_test(url, initialize=noop)
-
+    await pool.start()
     yield pool
     if pool._conn.is_closed():
         return
@@ -46,9 +49,46 @@ async def conn(pool):
 
 
 @pytest.fixture
-async def iam(pool):
+async def theapp(pool):
     app = FastAPI()
     db = configure_asyncpg(app, "", pool=pool)
     settings = {}
     iam = configure_iam(settings, fastapi_asyncpg=db)
-    yield iam
+    app.include_router(iam.router, prefix="/auth")
+    yield iam, app
+
+
+users_ = [
+    {
+        "email": "test@test.com",
+        "password": "asdf",
+        "is_active": True,
+        "is_staff": True,
+        "is_admin": False,
+    },
+    {
+        "email": "admin@test.com",
+        "password": "asdf",
+        "is_active": True,
+        "is_staff": True,
+        "is_admin": True,
+    },
+    {
+        "email": "inactive@test.com",
+        "password": "asdf",
+        "is_active": False,
+        "is_staff": True,
+        "is_admin": True,
+    },
+]
+
+
+@pytest.fixture
+async def users(theapp):
+    iam, app = theapp
+    async with TestClient(app) as client:
+        async with iam.pool.acquire() as conn:
+            org = await models.create_org(iam.settings, conn, "org")
+            for user in users_:
+                await models.create_user(iam.settings, conn, user, org.org_id)
+    yield client, iam

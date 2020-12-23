@@ -1,13 +1,20 @@
--- drop schema demo cascade;
--- create schema demo;
--- set schema 'demo';
+--drop schema demo cascade;
+--create schema demo;
+--set schema 'demo';
 
 
 create type auth_types as ENUM
     ('password', 'provider', 'service-token');
 
+CREATE TABLE organization (
+    org_id serial primary key,
+    pub_id varchar not null,
+    name varchar
+);
+
 
 CREATE TABLE IF NOT EXISTS users (
+    org_id integer references organization(org_id),
     user_id serial primary key,
     email character varying(254) NOT NULL,
     password character varying(128) NOT NULL,
@@ -20,7 +27,7 @@ CREATE TABLE IF NOT EXISTS users (
     auth_type auth_types NOT NULL default 'password',
     auth_provider varchar,
     props jsonb default '{}'::jsonb,
-    UNIQUE (email),
+    UNIQUE (email, org_id)
 );
 
 CREATE TABLE users_keys (
@@ -46,30 +53,30 @@ CREATE INDEX users_token_idx on
     users_token using btree(token);
 
 
-CREATE type ticket_type AS ENUM ('service_token', 'user_token');
 
-
-CREATE TABLE users_authticket (
-    user_id integer references users(user_id),
+CREATE TABLE users_session (
     token varchar not null,
+    user_id integer references users(user_id),
     expires timestamp without time zone default now() + '30m'::interval,
     refresh_token varchar,
     refresh_token_expires timestamp without time zone
         default now() + '7d'::interval,
-    token_type ticket_type default 'user_token'
+    data jsonb
 );
 
 
-CREATE INDEX users_authticket_idx on
-    users_authticket using btree(token);
+CREATE INDEX users_session_idx on
+    users_session using btree(token);
 
-CREATE INDEX users_authticket_refresh_idx on
-    users_authticket using btree(refresh_token);
+CREATE INDEX users_session_refresh_idx on
+    users_session using btree(refresh_token);
+
 
 CREATE TABLE groups (
+    org_id integer references organization(org_id),
     group_id serial primary key,
     name character varying(150) NOT NULL,
-    unique(name)
+    unique(name, org_id)
 );
 
 
@@ -115,3 +122,7 @@ BEGIN
     RETURN v_groups;
 END;
 $$ LANGUAGE plpgsql;
+
+
+
+
