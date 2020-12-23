@@ -88,7 +88,6 @@ async def users(theapp):
     iam, app = theapp
     async with TestClient(app) as client:
         async with iam.pool.acquire() as conn:
-            org = await models.create_org(iam.settings, conn, "org")
             for user in users_:
-                await models.create_user(iam.settings, conn, user, org.org_id)
+                await models.create_user(iam.settings, conn, user)
     yield client, iam

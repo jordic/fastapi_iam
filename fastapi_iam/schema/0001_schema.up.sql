@@ -6,15 +6,8 @@
 create type auth_types as ENUM
     ('password', 'provider', 'service-token');
 
-CREATE TABLE organization (
-    org_id serial primary key,
-    pub_id varchar not null,
-    name varchar
-);
-
 
 CREATE TABLE IF NOT EXISTS users (
-    org_id integer references organization(org_id),
     user_id serial primary key,
     email character varying(254) NOT NULL,
     password character varying(128) NOT NULL,
@@ -27,7 +20,7 @@ CREATE TABLE IF NOT EXISTS users (
     auth_type auth_types NOT NULL default 'password',
     auth_provider varchar,
     props jsonb default '{}'::jsonb,
-    UNIQUE (email, org_id)
+    UNIQUE (email)
 );
 
 CREATE TABLE users_keys (
@@ -73,10 +66,9 @@ CREATE INDEX users_session_refresh_idx on
 
 
 CREATE TABLE groups (
-    org_id integer references organization(org_id),
     group_id serial primary key,
     name character varying(150) NOT NULL,
-    unique(name, org_id)
+    unique(name)
 );
 
 
