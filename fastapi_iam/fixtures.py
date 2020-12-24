@@ -68,14 +68,14 @@ users_ = [
     },
     {
         "email": "admin@test.com",
-        "password": "asdf",
+        "password": "asdf1",
         "is_active": True,
         "is_staff": True,
         "is_admin": True,
     },
     {
         "email": "inactive@test.com",
-        "password": "asdf",
+        "password": "asd2",
         "is_active": False,
         "is_staff": True,
         "is_admin": True,
@@ -89,5 +89,5 @@ async def users(theapp):
     async with TestClient(app) as client:
         async with iam.pool.acquire() as conn:
             for user in users_:
-                await models.create_user(iam.settings, conn, user)
+                await models.create_user(iam.settings, conn, user.copy())
     yield client, iam

@@ -67,3 +67,53 @@ async def test_invalid_token(users):
         "/auth/whoami", headers={"Authorization": "Bearer XXX"}
     )
     assert res.status_code == 403
+
+
+async def test_disable_user(users):
+    client, iam = users
+    res = await client.post(
+        "/auth/login",
+        form={"username": "test@test.com", "password": "asdf"},
+    )
+    assert res.status_code == 200
+    assert "access_token" in res.json()
+    token = res.json()["access_token"]
+
+    res = await client.get("/auth/whoami", headers=auth_header(token))
+    assert res.status_code == 200
+
+    user_id = res.json()["user_id"]
+    async with iam.pool.acquire() as db:
+        await db.execute(
+            "update users set is_active=false where user_id=$1", user_id
+        )
+
+    res = await client.post(
+        "/auth/login",
+        form={"username": "test@test.com", "password": "asdf"},
+    )
+    assert res.status_code == 412
+
+
+async def test_refresh_token(users):
+    client, iam = users
+    # change expiration time to be negative
+    iam.settings["jwt_expiration"] = -60
+    res = await client.post(
+        "/auth/login",
+        form={"username": "test@test.com", "password": "asdf"},
+    )
+    assert res.status_code == 200
+    access_token = res.json()["access_token"]
+    try:
+        _ = jwt.decode(
+            access_token,
+            iam.settings["jwt_secret_key"],
+            algorithms=iam.settings["jwt_algorithm"],
+        )
+    except jwt.exceptions.ExpiredSignatureError:
+        pass
+
+    refresh_token = res.cookies["refresh"]
+    headers = {"Cookie": f"refresh={refresh_token}"}
+    iam.settings["jwt_expiration"] = 60 * 60 * 1

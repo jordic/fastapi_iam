@@ -1,23 +1,16 @@
 from .. import models
-from fastapi_asyncpg import sql
+from ..interfaces import ISessionManager
 from fastapi.exceptions import HTTPException
 
 import datetime
-import json
 import jwt
 import uuid
 
 InvalidUser = HTTPException(status_code=403, detail="invalid_user")
+ExpiredToken = HTTPException(status_code=417, detail="invalid_user")
 
 
-class SessionDbManager:
-    """
-    A session manager that persists data on the db.
-    It's also emiting jwt tokens to be consumed for other systems
-    but it ensures the presence of the token on the db.
-    If token is invalidated from the db, the user is automatically logged out
-    A cookie is emitted to act as a refresh token for the user
-    """
+class SessionDbManager(ISessionManager):
 
     cookie_name = "refresh"
 
@@ -29,31 +22,31 @@ class SessionDbManager:
         """
         self.iam = iam
 
-    async def create_session(self, user, data=None) -> models.UserSession:
+    async def create_session(self, user) -> models.UserSession:
         """
         creates a sesssion, makes a token, and stores on the db.
         Also fabricates a token to be usable on the refreshtoken endpoint
         """
         token, expire = await self.create_access_token(user)
-        refresh_token = refresh_token = uuid.uuid4().hex
-        refresh_expiration = datetime.datetime.utcnow() + datetime.timedelta(
+        refresh_token, refresh_expiration = self.get_new_refresh_token()
+        us = models.UserSession(
+            user_id=user.user_id,
+            token=token,
+            expires=expire,
+            refresh_token=refresh_token,
+            refresh_token_expires=refresh_expiration,
+        )
+        async with self.iam.pool.acquire() as db:
+            sess_repo = models.SessionRepository(db, self.schema)
+            await sess_repo.create(us)
+        return us
+
+    def get_new_refresh_token(self):
+        rt = uuid.uuid4().hex
+        rte = datetime.datetime.utcnow() + datetime.timedelta(
             seconds=self.cfg["session_expiration"]
         )
-        data = data or {}
-        async with self.iam.pool.acquire() as db:
-            result = await sql.insert(
-                db,
-                f"{self.schema}users_session",
-                {
-                    "user_id": user.user_id,
-                    "token": token,
-                    "expires": expire,
-                    "refresh_token": refresh_token,
-                    "refresh_token_expires": refresh_expiration,
-                    "data": json.dumps(data),
-                },
-            )
-            return models.UserSession(**dict(result))
+        return rt, rte
 
     @property
     def schema(self):
@@ -64,7 +57,7 @@ class SessionDbManager:
     def cfg(self):
         return self.iam.settings
 
-    async def find_user(self, token) -> models.User:
+    async def validate(self, token) -> models.User:
         if token.get("id") == "root":  # todo ensure password matches
             return models.root_user
         # decode token
@@ -102,20 +95,52 @@ class SessionDbManager:
         )
         return encoded_jwt.decode("utf-8"), expire
 
-    async def update():
-        pass
+    async def refresh(self, token) -> models.UserSession:
+        """creates a new access_token and updates it on the storage.
+        Optionaly rotates the refresh_token. If refresh_token rotation
+        enabled, we must be extra careful, because other authenticated
+        devices will not be able to login again after it
+        """
+        async with self.iam.pool.acquire() as db:
+            users_repo = models.UserRepository(db, self.schema)
+            sess_repo = models.SessionRepository(db, self.schema)
+            user = await users_repo.by_token(refresh_token=token)
+            expired = await sess_repo.is_expired(token)
+
+            if expired is True:
+                raise ExpiredToken
+
+            if user is None:
+                raise InvalidUser
+
+            # handle refresh token rotation
+            kwargs = {}
+            rt = rte = None
+            if self.cfg["rotate_refresh_tokens"] is True:
+                rt, rte = self.get_new_refresh_token()
+                kwargs = {"new_rt": rt, "new_rte": rte}
+
+            new_token, new_expire = await self.create_access_token(user)
+            # update storage token
+            await sess_repo.update_token(token, new_token, new_expire, **kwargs)
+            return models.UserSession(
+                user_id=user.user_id,
+                token=new_token,
+                expires=new_expire,
+                refresh_token=rt,
+                refresh_token_expires=rte,
+            )
 
     async def forget(self, user, response):
         async with self.iam.pool.acquire() as db:
-            await sql.delete(
-                db, f"{self.schema}users_session", "token=$1", args=[user.token]
-            )
+            sess_repo = models.SessionRepository(db, self.schema)
+            await sess_repo.delete(user.token)
             # cleanup cookie
             response.delete_cookie(
                 self.cookie_name, path="/", domain=self.cfg["cookie_domain"]
             )
 
-    def remember(self, user_session, response, request=None):
+    async def remember(self, user_session, response, request=None):
         max_age = self.cfg["session_expiration"]
         domain = self.cfg["cookie_domain"] or (
             request.headers["host"].split(":")[0] if request else "localhost"

@@ -1,6 +1,7 @@
 from . import auth
 from . import views
 from .initialize import initialize_db
+from . import interfaces
 from .provider import set_provider
 from fastapi import APIRouter
 from fastapi_asyncpg import configure_asyncpg
@@ -22,8 +23,8 @@ default_settings = {
     "jwt_algorithm": "HS256",
     "jwt_secret_key": "XXXXX",
     "cookie_domain": None,
-    "refresh_cookie_name": "refresh_token",
-    "session_expiration": 60 * 60 * 24,  # one day
+    "session_expiration": 60 * 60 * 24 * 360,  # one year
+    "rotate_refresh_tokens": True,
     "db_pool": None,
 }
 
@@ -46,7 +47,7 @@ def configure_iam(
     return iam
 
 
-class IAM:
+class IAM(interfaces.IIAM):
     def __init__(
         self,
         settings,
@@ -69,8 +70,12 @@ class IAM:
         self.router.add_api_route(
             "/logout", views.logout, methods=["POST", "GET"]
         )
+        self.router.add_api_route("/renew", views.renew, methods=["POST"])
         self.router.add_api_route("/whoami", views.whoami)
 
     @property
     def pool(self):
         return self.db.pool
+
+    def get_session_manager(self) -> interfaces.ISessionManager:
+        return self.settings["session_manager"](self)

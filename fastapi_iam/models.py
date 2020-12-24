@@ -78,9 +78,9 @@ class UserSession(pd.BaseModel):
     user_id: int
     token: str
     expires: datetime.datetime
-    refresh_token: str
-    refresh_token_expires: datetime.datetime
-    token_type: str = "user_token"
+    refresh_token: typing.Optional[str]
+    refresh_token_expires: typing.Optional[datetime.datetime]
+    data: typing.Optional[pd.Json]
 
 
 async def create_user(settings, db, user):
@@ -175,6 +175,62 @@ class GroupRepository(BaseRepository):
         return [
             r["name"] for r in await self.db.fetch("SELECT name from groups")
         ]
+
+
+class SessionRepository(BaseRepository):
+    async def create(self, us: UserSession):
+        result = await sql.insert(
+            self.db,
+            f"{self.schema}users_session",
+            us.dict(),
+        )
+        return UserSession(**dict(result))
+
+    async def is_expired(self, refresh_token: str) -> bool:
+        expiration = await self.db.fetchval(
+            f"""
+            SELECT refresh_token_expires
+                FROM {self.schema}users_session
+            WHERE refresh_token=$1
+        """,
+            refresh_token,
+        )
+        return expiration < datetime.datetime.utcnow()
+
+    async def delete(self, token):
+        await sql.delete(
+            self.db,
+            f"{self.schema}users_session",
+            "token=$1",
+            args=[token],
+        )
+
+    async def update_token(
+        self,
+        refresh_token: str,
+        token: str,
+        expires: datetime.datetime,
+        *,
+        new_rt: str = None,  # set it to rotate the refresh token
+        new_rte: str = None,
+    ):
+        extra = ""
+        args = [token, expires, refresh_token]
+        if new_rt:
+            assert (
+                new_rt and new_rte
+            ), "new_token and new_token_expiration required"
+            extra = ", refresh_token=$4, refresh_token_expires=$5"
+            args = args + [new_rt, new_rte]
+
+        await self.db.execute(
+            f"""
+            UPDATE {self.schema}users_session
+                set token=$1, expires=$2 {extra}
+            WHERE refresh_token=$3
+        """,
+            *args,
+        )
 
 
 def unflat(row, *fields):

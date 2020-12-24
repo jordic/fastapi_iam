@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 from .. import models
-from ..provider import IAMProvider
 from ..provider import get_current_user
+from ..provider import IAMProvider
+from fastapi import Cookie
 from fastapi import Depends
 from fastapi.exceptions import HTTPException
 from fastapi.requests import Request
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from random import randint
+from typing import Optional
 
 import asyncio
 
@@ -46,7 +48,7 @@ async def login(
     if valid is False:
         return await invalid_user()
 
-    session_manager = cfg["session_manager"](iam)
+    session_manager = iam.get_session_manager()
     # generate an acccess token
     user_session = await session_manager.create_session(user)
 
@@ -55,7 +57,7 @@ async def login(
         content={"access_token": user_session.token},
         headers={"cache-control": "no-store", "pargma": "no-cache"},
     )
-    session_manager.remember(user_session, response, request=request)
+    await session_manager.remember(user_session, response, request=request)
     return response
 
 
@@ -67,6 +69,21 @@ async def logout(user=Depends(get_current_user), iam=Depends(IAMProvider)):
     token = getattr(user, "token", None)
     if not token:
         return {}
-    session_manager = iam.settings["session_manager"](iam)
+    session_manager = iam.get_session_manager()
     response = JSONResponse(content="keep safe")
     await session_manager.forget(user, response)
+
+
+async def renew(
+    request: Request,
+    iam=Depends(IAMProvider),
+    refresh: Optional[str] = Cookie(None),
+):
+    sm = iam.get_session_manager()
+    user_session = await sm.refresh(refresh)
+    response = JSONResponse(
+        {"access_token": user_session.token, "expiration": user_session.expires}
+    )
+    if iam.settings["rotate_refresh_tokens"] is True:
+        await sm.remember(user_session, response, request=request)
+    return response

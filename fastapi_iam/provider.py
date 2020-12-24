@@ -30,8 +30,8 @@ async def get_current_user(
     token = await extractors(iam, request)
     if not token:
         return anonymous_user
-    session_manager = iam.settings["session_manager"](iam)
-    user = await session_manager.find_user(token)
+    session_manager = iam.get_session_manager()
+    user = await session_manager.validate(token)
     user.token = token.get("token")
     return user
 
