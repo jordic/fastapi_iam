@@ -87,7 +87,6 @@ users_ = [
 async def users(theapp):
     iam, app = theapp
     async with TestClient(app) as client:
-        async with iam.pool.acquire() as conn:
-            for user in users_:
-                await models.create_user(iam.settings, conn, user.copy())
+        for user in users_:
+            await models.create_user(iam, user.copy())
     yield client, iam

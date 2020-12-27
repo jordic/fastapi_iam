@@ -114,6 +114,18 @@ async def test_refresh_token(users):
     except jwt.exceptions.ExpiredSignatureError:
         pass
 
+    # keep the refresh cookie for later use
     refresh_token = res.cookies["refresh"]
-    headers = {"Cookie": f"refresh={refresh_token}"}
-    iam.settings["jwt_expiration"] = 60 * 60 * 1
+
+    # we are not authenticated
+    res = await client.get("/auth/whoami", headers=auth_header(access_token))
+    assert res.status_code == 403
+
+    headers = {"refresh": f"{refresh_token}"}
+    iam.settings["jwt_expiration"] = 60 * 60 * 24
+
+    renew = await client.post("/auth/renew", cookies=headers)
+    assert renew.status_code == 200
+    nt = renew.json()["access_token"]
+    res = await client.get("/auth/whoami", headers=auth_header(nt))
+    assert res.status_code == 200

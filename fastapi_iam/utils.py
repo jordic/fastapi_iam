@@ -1,6 +1,7 @@
 from collections.abc import MutableMapping
 from functools import partial
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 
 import asyncio
 
@@ -29,3 +30,34 @@ async def run_in_threadpool(func, *args, **kwargs):
     loop = asyncio.get_running_loop()
     with ThreadPoolExecutor() as pool:
         return await loop.run_in_executor(pool, curr)
+
+
+def resolve_dotted_name(name: str) -> Any:
+    """
+    import the provided dotted name
+
+    >>> resolve_dotted_name('guillotina.interfaces.IRequest')
+    <InterfaceClass guillotina.interfaces.IRequest>
+
+    :param name: dotted name
+    """
+    if not isinstance(name, str):
+        return name  # already an object
+    names = name.split(".")
+    used = names.pop(0)
+    found = __import__(used)
+    for n in names:
+        used += "." + n
+        try:
+            found = getattr(found, n)
+        except AttributeError:
+            __import__(used)
+            found = getattr(found, n)
+
+    return found
+
+
+def maybe_resolve(item: Any):
+    if isinstance(item, str):
+        return resolve_dotted_name(item)
+    return item

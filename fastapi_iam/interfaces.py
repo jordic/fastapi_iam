@@ -37,3 +37,50 @@ class ISessionManager(Protocol):
 
     async def forget(self, user_session, response, *, request=None):
         pass
+
+
+class IUsersStorage(Protocol):
+    async def create(self, user):
+        pass
+
+    async def by_email(self, email: str):
+        pass
+
+    async def by_id(self, user_id: int):
+        pass
+
+    async def by_token(self, *, token: str = None, refresh_token: str = None):
+        pass
+
+    async def update_user(self, user, data):
+        pass
+
+    async def update_groups(self, user, groups):
+        pass
+
+
+class IGroupsStorage(Protocol):
+    async def add_group(self, name):
+        pass
+
+    async def get_groups(self):
+        pass
+
+    async def get_group(self, name):
+        pass
+
+
+class ISessionStorage(Protocol):
+    async def create(self, user_session):
+        pass
+
+    async def is_expired(self, refresh_token):
+        pass
+
+    async def delete(self, token):
+        pass
+
+    async def update_token(
+        self, refresh_token, token, expires, new_rt=None, new_rte=None
+    ):
+        pass

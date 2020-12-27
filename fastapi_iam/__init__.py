@@ -6,6 +6,7 @@ from .provider import set_provider
 from fastapi import APIRouter
 from fastapi_asyncpg import configure_asyncpg
 from functools import partial
+from .services import pg
 
 import logging
 import typing
@@ -26,6 +27,12 @@ default_settings = {
     "session_expiration": 60 * 60 * 24 * 360,  # one year
     "rotate_refresh_tokens": True,
     "db_pool": None,
+    "services": {
+        interfaces.IUsersStorage: pg.UserStorage,
+        interfaces.ISessionStorage: pg.SessionStorage,
+        interfaces.IGroupsStorage: pg.GroupStorage,
+    },
+    "default_service_factory": pg.pg_service_factory,
 }
 
 
@@ -58,6 +65,8 @@ class IAM(interfaces.IIAM):
         self.router = api_router_cls()
         self.settings = settings
         self.db = fastapi_asyncpg
+        self.services = settings["services"]
+        self.services_factory = {}
         self.initialize_iam_db = partial(initialize_db, settings)
         self.setup_routes()
 
@@ -79,3 +88,10 @@ class IAM(interfaces.IIAM):
 
     def get_session_manager(self) -> interfaces.ISessionManager:
         return self.settings["session_manager"](self)
+
+    def get_service(self, service_type):
+        assert service_type in self.services
+        factory = self.settings["default_service_factory"]
+        if service_type in self.services_factory:
+            factory = self.services_factory[service_type]
+        return factory(self, self.services[service_type])

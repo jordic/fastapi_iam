@@ -1,6 +1,6 @@
 from fastapi_asyncpg import sql
-from fastapi_iam.models import UserRepository
-from fastapi_iam.models import GroupRepository
+from fastapi_iam.services.pg import UserStorage
+from fastapi_iam.services.pg import GroupStorage
 from fastapi_iam import models
 import pytest
 
@@ -12,14 +12,14 @@ user1 = models.UserCreate(email="test@test.com", password="test")
 groups = ["admin", "staff", "mkt"]
 
 
-async def testing_works(conn):
-    repo = UserRepository(conn)
+async def test_base_model_service_storage(conn):
+    repo = UserStorage(conn)
 
     await repo.create(user1)
     assert await sql.count(conn, "users") == 1
     user = await repo.by_email("test@test.com")
     assert user.password == "test"
-    grepo = GroupRepository(conn)
+    grepo = GroupStorage(conn)
     # add groups to user
     for group in groups:
         await grepo.add_group(group)

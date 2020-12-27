@@ -3,6 +3,7 @@ from __future__ import annotations
 from .. import models
 from ..provider import get_current_user
 from ..provider import IAMProvider
+from ..interfaces import IUsersStorage
 from fastapi import Cookie
 from fastapi import Depends
 from fastapi.exceptions import HTTPException
@@ -11,8 +12,11 @@ from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from random import randint
 from typing import Optional
+from fastapi.encoders import jsonable_encoder
 
 import asyncio
+
+NO_CACHE = {"cache-control": "no-store", "pargma": "no-cache"}
 
 
 async def status(request: Request, iam=Depends(IAMProvider)):
@@ -35,11 +39,10 @@ async def login(
 ):
     cfg = iam.settings
     ph = cfg["password_hasher"]()
-    async with iam.pool.acquire() as db:
-        um = models.UserRepository(db, cfg["db_schema"])
-        user = await um.by_email(form_data.username)
-        if not user:
-            return await invalid_user()
+    um = iam.get_service(IUsersStorage)
+    user = await um.by_email(form_data.username)
+    if not user:
+        return await invalid_user()
 
     if user.is_active is False:
         raise HTTPException(status_code=412, detail="User is inactive")
@@ -53,9 +56,13 @@ async def login(
     user_session = await session_manager.create_session(user)
 
     # build the response and attach a refresh_token cookie
+    data = {
+        "access_token": user_session.token,
+        "expiration": user_session.expires,
+    }
     response = JSONResponse(
-        content={"access_token": user_session.token},
-        headers={"cache-control": "no-store", "pargma": "no-cache"},
+        content=jsonable_encoder(data),
+        headers=NO_CACHE,
     )
     await session_manager.remember(user_session, response, request=request)
     return response
@@ -82,7 +89,12 @@ async def renew(
     sm = iam.get_session_manager()
     user_session = await sm.refresh(refresh)
     response = JSONResponse(
-        {"access_token": user_session.token, "expiration": user_session.expires}
+        jsonable_encoder(
+            {
+                "access_token": user_session.token,
+                "expiration": user_session.expires,
+            }
+        )
     )
     if iam.settings["rotate_refresh_tokens"] is True:
         await sm.remember(user_session, response, request=request)
