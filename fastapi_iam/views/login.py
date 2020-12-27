@@ -1,18 +1,19 @@
 from __future__ import annotations
 
+from .. import events
 from .. import models
+from ..interfaces import IUsersStorage
 from ..provider import get_current_user
 from ..provider import IAMProvider
-from ..interfaces import IUsersStorage
 from fastapi import Cookie
 from fastapi import Depends
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import HTTPException
 from fastapi.requests import Request
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from random import randint
 from typing import Optional
-from fastapi.encoders import jsonable_encoder
 
 import asyncio
 
@@ -60,6 +61,7 @@ async def login(
         "access_token": user_session.token,
         "expiration": user_session.expires,
     }
+    await events.notify(events.UserLogin(user, user_session.token))
     response = JSONResponse(
         content=jsonable_encoder(data),
         headers=NO_CACHE,
@@ -77,6 +79,7 @@ async def logout(user=Depends(get_current_user), iam=Depends(IAMProvider)):
     if not token:
         return {}
     session_manager = iam.get_session_manager()
+    await events.notify(events.UserLogout(user))
     response = JSONResponse(content="keep safe")
     await session_manager.forget(user, response)
 
@@ -94,7 +97,8 @@ async def renew(
                 "access_token": user_session.token,
                 "expiration": user_session.expires,
             }
-        )
+        ),
+        headers=NO_CACHE,
     )
     if iam.settings["rotate_refresh_tokens"] is True:
         await sm.remember(user_session, response, request=request)

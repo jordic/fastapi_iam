@@ -1,6 +1,6 @@
 from collections.abc import MutableMapping
-from functools import partial
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from typing import Any
 
 import asyncio

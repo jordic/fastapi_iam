@@ -1,5 +1,6 @@
-from typing import Optional
 from ..interfaces import IUsersStorage
+from typing import Optional
+
 import datetime
 import pydantic as pd
 import typing

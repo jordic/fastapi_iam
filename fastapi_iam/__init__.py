@@ -1,12 +1,12 @@
 from . import auth
+from . import interfaces
 from . import views
 from .initialize import initialize_db
-from . import interfaces
 from .provider import set_provider
+from .services import pg
 from fastapi import APIRouter
 from fastapi_asyncpg import configure_asyncpg
 from functools import partial
-from .services import pg
 
 import logging
 import typing

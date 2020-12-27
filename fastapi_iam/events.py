@@ -27,3 +27,14 @@ def add_subscriber(event, func):
     if event not in events:
         events[event] = []
     events[event].append(func)
+
+
+class UserLogin:
+    def __init__(self, user, token):
+        self.user = user
+        self.token = token
+
+
+class UserLogout:
+    def __init__(self, user):
+        self.user = user

@@ -1,10 +1,11 @@
 from __future__ import annotations
-from fastapi import Depends
-from fastapi.requests import Request
-from fastapi.security import OAuth2PasswordBearer
+
 from .auth import extractors
 from .models import anonymous_user
+from fastapi import Depends
 from fastapi.exceptions import HTTPException
+from fastapi.requests import Request
+from fastapi.security import OAuth2PasswordBearer
 
 current_app = None
 

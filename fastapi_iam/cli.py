@@ -1,7 +1,7 @@
 from argparse import ArgumentParser
+from fastapi_iam.auth import PasswordHasher
 from fastapi_iam.models import UserCreate
 from fastapi_iam.models import UserRepository
-from fastapi_iam.auth import PasswordHasher
 from getpass import getpass
 
 import asyncio

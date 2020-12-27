@@ -1,13 +1,12 @@
-from fastapi.applications import FastAPI
+from . import models
 from .initialize import initialize_db
+from async_asgi_testclient import TestClient
+from fastapi.applications import FastAPI
 from fastapi_asyncpg import configure_asyncpg
 from fastapi_asyncpg import create_pool_test
 from fastapi_iam import configure_iam
 from pathlib import Path
 from pytest_docker_fixtures import images
-from async_asgi_testclient import TestClient
-
-from . import models
 
 import asyncpg
 import pytest

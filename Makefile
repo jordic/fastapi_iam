@@ -3,13 +3,13 @@
 lint: isort black flake8 mypy
 
 isort:
-	isort fastapi_asyncpg
+	isort fastapi_iam
 
 black:
-	black fastapi_asyncpg/  -l 80
+	black fastapi_iam/  -l 80
 
 flake8:
-	flake8 fastapi_asyncpg
+	flake8 fastapi_iam
 
 mypy:
-	mypy fastapi_asyncpg
+	mypy fastapi_iam
