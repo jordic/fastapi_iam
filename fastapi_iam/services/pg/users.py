@@ -101,14 +101,13 @@ class UserStorage(BaseRepository):
 
         user = await self.by_id(user_id)
         groups = data.pop("groups", None)
-        async with self.db.transaction():
-            if len(data) > 0:
-                await sql.update(
-                    self.db, f"{self.schema}users", {"user_id": user_id}, data
-                )
-            if groups:
-                await self.update_groups(user, groups)
-            return models.PublicUser(**dict(await self.by_id(user_id)))
+        if len(data) > 0:
+            await sql.update(
+                self.db, f"{self.schema}users", {"user_id": user_id}, data
+            )
+        if groups:
+            await self.update_groups(user, groups)
+        return models.PublicUser(**dict(await self.by_id(user_id)))
 
     async def update_groups(
         self, user: models.User, groups: typing.List[str]

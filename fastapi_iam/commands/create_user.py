@@ -1,7 +1,7 @@
 from argparse import ArgumentParser
-from fastapi_iam.auth import PasswordHasher
+from fastapi_iam.auth.hasher import ArgonPasswordHasher
 from fastapi_iam.models import UserCreate
-from fastapi_iam.models import UserRepository
+from fastapi_iam.services.pg import UserStorage
 from getpass import getpass
 
 import asyncio
@@ -35,7 +35,6 @@ async def create_user():
         )
         sys.exit(1)
 
-    org_id = int(input("Org_id: "))
     email = input("Email: ").strip()
     password = getpass("Password: ").strip()
     repassword = getpass("Password Again: ").strip()
@@ -49,11 +48,10 @@ async def create_user():
     is_active = parse_bool(input("Is Active? [Y/n] "))
 
     db = await asyncpg.connect(dsn=dbdsn)
-    repo = UserRepository(db, schema=env_schema)
-    hasher = PasswordHasher()
+    repo = UserStorage(db, schema=env_schema)
+    hasher = ArgonPasswordHasher()
 
     user = UserCreate(
-        org_id=org_id,
         email=email,
         password=await hasher.hash_password(password),
         is_staff=is_staff,

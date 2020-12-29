@@ -1,46 +1,74 @@
 from __future__ import annotations
 
+from . import models
 from typing import Protocol
+
+import typing
 
 
 class IIAM(Protocol):
     """ Thats the main application entry point """
 
-    def get_session_manager(self) -> "ISecurityPolicy":
+    settings: typing.Dict[str, typing.Any]
+
+    security_policy: ISecurityPolicy
+    services: typing.Dict[typing.Any, typing.Any]  # a registry for service
+    # factory for each service
+    services_factory: typing.Dict[typing.Any, typing.Callable]
+
+    def get_security_policy(self) -> "ISecurityPolicy":
+        pass
+
+    def get_service(self, service_type):
+        """Given a registered IService, factorizes an instance of it
+        ready to be used. If no factory declared, it uses
+            settings["default_service_factory"]
+        This is mostly used to inject a db connection or other settings
+        into a service.
+        """
         pass
 
 
 class ISecurityPolicy(Protocol):
     """
-    The main responsability of a session manager is to handle
-    the different flows of autenticated users.
-
-    It's also emiting jwt tokens to be consumed for other systems
-    but it ensures the presence of the token on the db.
-
-    If token is invalidated from the db, the user is automatically logged out
-    A cookie is emitted to act as a refresh token for the user
+    ISecurityPolicy is the core of the iam,
+    It manages login, session validation, refresh, remember and forget
+    This component could be extended to be able to add new features
+    to it
     """
 
     iam: IIAM  # instance of the main appliaction, used as a poor man registry
 
-    async def create_session(self, user):
+    async def login(
+        self, username: str, password: str, request=None
+    ) -> typing.Tuple[models.PublicUser, models.UserSession]:
+        """ Given a username and a password login the user"""
         pass
 
-    async def validate(self, token):
+    async def create_session(self, user) -> models.UserSession:
+        """ Creates a session an 'stores' it """
         pass
 
-    async def refresh(self, refresh_token):
+    async def validate(self, token) -> models.User:
+        """ Vadlidates a session and returns the avaialble user"""
+        pass
+
+    async def refresh(self, refresh_token) -> models.UserSession:
+        """ Creates a new access token and stores it using the refresh token"""
         pass
 
     async def remember(self, user_session, response, *, request=None):
+        """ Makes the refresh token persistent using a cookie """
         pass
 
     async def forget(self, user_session, response, *, request=None):
+        """ Forgets a user, after logout, removing the cookie """
         pass
 
 
 class IUsersStorage(Protocol):
+    """ Persistent storage service for users """
+
     async def create(self, user):
         pass
 
@@ -61,6 +89,8 @@ class IUsersStorage(Protocol):
 
 
 class IGroupsStorage(Protocol):
+    """ Persistent storage service for groups """
+
     async def add_group(self, name):
         pass
 
@@ -72,6 +102,8 @@ class IGroupsStorage(Protocol):
 
 
 class ISessionStorage(Protocol):
+    """ Persistent storage for sessions """
+
     async def create(self, user_session):
         pass
 

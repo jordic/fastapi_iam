@@ -38,9 +38,20 @@ async def login(
     iam=Depends(IAMProvider),
 ):
     auth_manager = iam.get_security_policy()
-    return await auth_manager.login(
+    user, user_session = await auth_manager.login(
         form_data.username, form_data.password, request=request
     )
+    await events.notify(events.UserLogin(user, user_session.token))
+    data = {
+        "access_token": user_session.token,
+        "expiration": user_session.expires,
+    }
+    response = JSONResponse(
+        content=jsonable_encoder(data),
+        headers=NO_CACHE,
+    )
+    await auth_manager.remember(user_session, response, request=request)
+    return response
 
 
 async def whoami(user=Depends(get_current_user)):

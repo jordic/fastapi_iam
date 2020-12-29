@@ -17,7 +17,7 @@ logger = logging.getLogger("fastapi_iam")
 
 default_settings = {
     "db_schema": "",
-    "jwt_expiration": 1 * 60 * 60,  # expiratoin in seconds
+    "jwt_expiration": 6 * 60 * 60,  # expiratoin in seconds
     "jwt_algorithm": "HS256",
     "jwt_secret_key": "XXXXX",
     "cookie_domain": None,
@@ -93,9 +93,6 @@ class IAM(interfaces.IIAM):
 
     def get_security_policy(self):
         return self.security_policy(self)
-
-    def get_session_manager(self) -> interfaces.ISecurityPolicy:
-        return self.settings["session_manager"](self)
 
     def get_service(self, service_type):
         assert service_type in self.services

@@ -1,18 +1,16 @@
-from .. import events
 from .. import models
 from ..interfaces import ISecurityPolicy
 from ..interfaces import ISessionStorage
 from ..interfaces import IUsersStorage
 from .extractors import BearerAuthPolicy
 from .hasher import ArgonPasswordHasher
-from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import HTTPException
-from fastapi.responses import JSONResponse
 from random import randint
 
 import asyncio
 import datetime
 import jwt
+import typing
 import uuid
 
 InvalidUser = HTTPException(status_code=403, detail="invalid_user")
@@ -43,7 +41,9 @@ class PersistentSecurityPolicy(ISecurityPolicy):
         """
         self.iam = iam
 
-    async def login(self, username, password, request=None):
+    async def login(
+        self, username, password, request=None
+    ) -> typing.Tuple[models.PublicUser, models.UserSession]:
         user_service = self.iam.get_service(IUsersStorage)
         user = await user_service.by_email(username)
         if not user:
@@ -57,18 +57,10 @@ class PersistentSecurityPolicy(ISecurityPolicy):
             return await invalid_user()
 
         user_session = await self.create_session(user)
-        # build the response and attach a refresh_token cookie
-        data = {
-            "access_token": user_session.token,
-            "expiration": user_session.expires,
-        }
-        await events.notify(events.UserLogin(user, user_session.token))
-        response = JSONResponse(
-            content=jsonable_encoder(data),
-            headers=NO_CACHE,
+        await user_service.update_user(
+            user.user_id, {"last_login": datetime.datetime.utcnow()}
         )
-        await self.remember(user_session, response, request=request)
-        return response
+        return user, user_session
 
     async def create_session(self, user) -> models.UserSession:
         """
