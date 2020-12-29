@@ -3,9 +3,9 @@ from fastapi.requests import Request
 import base64
 
 
-async def extractors(iam, request: Request):
+async def get_extractors(iam, request: Request):
     user = None
-    for extractor in iam.settings["extractors"]:
+    for extractor in iam.get_security_policy().extractors:
         user = await extractor(request).extract_token()
         if user:
             break

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from .. import events
 from .. import models
-from ..interfaces import IUsersStorage
 from ..provider import get_current_user
 from ..provider import IAMProvider
 from fastapi import Cookie
@@ -38,36 +37,10 @@ async def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     iam=Depends(IAMProvider),
 ):
-    cfg = iam.settings
-    ph = cfg["password_hasher"]()
-    um = iam.get_service(IUsersStorage)
-    user = await um.by_email(form_data.username)
-    if not user:
-        return await invalid_user()
-
-    if user.is_active is False:
-        raise HTTPException(status_code=412, detail="User is inactive")
-
-    valid = await ph.check_password(user.password, form_data.password)
-    if valid is False:
-        return await invalid_user()
-
-    session_manager = iam.get_session_manager()
-    # generate an acccess token
-    user_session = await session_manager.create_session(user)
-
-    # build the response and attach a refresh_token cookie
-    data = {
-        "access_token": user_session.token,
-        "expiration": user_session.expires,
-    }
-    await events.notify(events.UserLogin(user, user_session.token))
-    response = JSONResponse(
-        content=jsonable_encoder(data),
-        headers=NO_CACHE,
+    auth_manager = iam.get_security_policy()
+    return await auth_manager.login(
+        form_data.username, form_data.password, request=request
     )
-    await session_manager.remember(user_session, response, request=request)
-    return response
 
 
 async def whoami(user=Depends(get_current_user)):
@@ -78,7 +51,7 @@ async def logout(user=Depends(get_current_user), iam=Depends(IAMProvider)):
     token = getattr(user, "token", None)
     if not token:
         return {}
-    session_manager = iam.get_session_manager()
+    session_manager = iam.get_security_policy()
     await events.notify(events.UserLogout(user))
     response = JSONResponse(content="keep safe")
     await session_manager.forget(user, response)
@@ -89,7 +62,7 @@ async def renew(
     iam=Depends(IAMProvider),
     refresh: Optional[str] = Cookie(None),
 ):
-    sm = iam.get_session_manager()
+    sm = iam.get_security_policy()
     user_session = await sm.refresh(refresh)
     response = JSONResponse(
         jsonable_encoder(
@@ -103,3 +76,11 @@ async def renew(
     if iam.settings["rotate_refresh_tokens"] is True:
         await sm.remember(user_session, response, request=request)
     return response
+
+
+async def reset_password():
+    pass
+
+
+async def password_change():
+    pass

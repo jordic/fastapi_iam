@@ -34,3 +34,27 @@ async def test_base_model_service_storage(conn):
 
     user = await repo.update_groups(user, ["xxxxx"])
     assert len(user.groups) == 0
+
+
+async def test_users_search(users):
+    _, ins = users
+    storage = UserStorage(ins.pool)
+    result = await storage.search()
+    assert result["total"] == 3
+    emails = set([r.email for r in result["items"]])
+    assert emails == {"test@test.com", "admin@test.com", "inactive@test.com"}
+
+    result = await storage.search(q="test%")
+    assert result["total"] == 1
+    assert result["items"][0].email == "test@test.com"
+
+    result = await storage.search(is_active=False)
+    assert result["total"] == 1
+    assert result["items"][0].email == "inactive@test.com"
+
+    result = await storage.search(is_admin=True, is_active=True)
+    assert result["total"] == 1
+    assert result["items"][0].email == "admin@test.com"
+
+    result = await storage.search(is_staff=True)
+    assert result["total"] == 3

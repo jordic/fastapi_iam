@@ -1,11 +1,13 @@
 from typing import Protocol
 
+import typing
+
 
 class IEvent(Protocol):
     pass
 
 
-events = {}
+events: typing.Dict[IEvent, typing.List[typing.Callable]] = {}
 
 
 async def notify(event: IEvent):

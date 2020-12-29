@@ -81,10 +81,15 @@ class UserSession(pd.BaseModel):
     data: typing.Optional[pd.Json]
 
 
+class Group(pd.BaseModel):
+    name: str
+
+
 async def create_user(iam, user):
-    settings = iam.settings
-    hasher = settings["password_hasher"]()
+    if isinstance(user, dict):
+        user = UserCreate(**user)
+    security_policy = iam.get_security_policy()
+    hasher = security_policy.hasher
     repo = iam.get_service(IUsersStorage)
-    user["password"] = await hasher.hash_password(user["password"])
-    us = UserCreate(**user)
-    return await repo.create(us)
+    user.password = await hasher.hash_password(user.password)
+    return await repo.create(user)

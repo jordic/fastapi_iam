@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .auth import extractors
+from .auth import get_extractors
 from .models import anonymous_user
 from fastapi import Depends
 from fastapi.exceptions import HTTPException
@@ -28,11 +28,11 @@ def IAMProvider():
 async def get_current_user(
     request: Request, iam=Depends(IAMProvider), token=Depends(oauth2_scheme)
 ):
-    token = await extractors(iam, request)
+    policy = iam.get_security_policy()
+    token = await get_extractors(iam, request)
     if not token:
         return anonymous_user
-    session_manager = iam.get_session_manager()
-    user = await session_manager.validate(token)
+    user = await policy.validate(token)
     user.token = token.get("token")
     return user
 
@@ -43,4 +43,4 @@ class has_principal:
 
     async def __call__(self, user=Depends(get_current_user)):
         if self.principal not in user.get_principals():
-            raise PermissionDenied()
+            raise PermissionDenied

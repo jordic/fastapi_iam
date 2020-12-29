@@ -3,6 +3,8 @@ from .base import BaseRepository
 from fastapi_asyncpg import sql
 from typing import Optional
 
+import typing
+
 
 class UserStorage(BaseRepository):
     async def create(self, user: models.UserCreate) -> models.User:
@@ -45,11 +47,58 @@ class UserStorage(BaseRepository):
         )
         return self.to_model(row)
 
-    async def update_user(self, data):
+    async def search(
+        self,
+        *,
+        q=None,
+        page=0,
+        limit=100,
+        is_staff=None,
+        is_active=None,
+        is_admin=None,
+    ):
+        conds = []
+        args = []
+        if q:
+            conds.append("u.email ilike $1")
+            args.append(q)
+        if is_staff is not None:
+            conds.append(f"u.is_staff = {to_str(is_staff)}")
+        if is_active is not None:
+            conds.append(f"u.is_active = {to_str(is_active)}")
+        if is_admin is not None:
+            conds.append(f"u.is_admin = {to_str(is_admin)}")
+
+        qs = f"""
+            {self.base_query()}
+            {'WHERE ' + ' AND '.join(conds) if len(conds) > 0 else ''}
+            GROUP BY u.user_id
+        """
+        pag = f"LIMIT {limit} OFFSET {page*limit}"
+        total = await self.db.fetchval(
+            f"""SELECT count(*) FROM (
+                {qs}
+            ) as foo""",
+            *args,
+        )
+        results = await self.db.fetch(
+            f"""
+            {qs} {pag}
+        """,
+            *args,
+        )
+        return {
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "items": [self.to_model(res) for res in results],
+        }
+
+    async def update_user(self, user_id: int, data):
         pass
 
     async def update_groups(
-        self, user: models.User, groups: list[str]
+        self, user: models.User, groups: typing.List[str]
     ) -> models.User:
         await self.db.fetch(
             "select FROM update_groups($1, $2)", groups, user.user_id
@@ -68,3 +117,9 @@ class UserStorage(BaseRepository):
                     WHERE ug.user_id = u.user_id
             ) g on true
         """
+
+
+def to_str(item: bool):
+    if item is True:
+        return "true"
+    return "false"

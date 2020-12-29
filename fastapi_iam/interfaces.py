@@ -6,11 +6,11 @@ from typing import Protocol
 class IIAM(Protocol):
     """ Thats the main application entry point """
 
-    def get_session_manager() -> "ISessionManager":
+    def get_session_manager(self) -> "ISecurityPolicy":
         pass
 
 
-class ISessionManager(Protocol):
+class ISecurityPolicy(Protocol):
     """
     The main responsability of a session manager is to handle
     the different flows of autenticated users.

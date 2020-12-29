@@ -1,20 +1,39 @@
+from .. import events
 from .. import models
-from ..interfaces import ISessionManager
+from ..interfaces import ISecurityPolicy
 from ..interfaces import ISessionStorage
 from ..interfaces import IUsersStorage
+from .extractors import BearerAuthPolicy
+from .hasher import ArgonPasswordHasher
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import HTTPException
+from fastapi.responses import JSONResponse
+from random import randint
 
+import asyncio
 import datetime
 import jwt
 import uuid
 
 InvalidUser = HTTPException(status_code=403, detail="invalid_user")
 ExpiredToken = HTTPException(status_code=417, detail="invalid_user")
+InactiveUser = HTTPException(status_code=412, detail="inactive_user")
+
+NO_CACHE = {"cache-control": "no-store", "pargma": "no-cache"}
 
 
-class SessionDbManager(ISessionManager):
+async def invalid_user():
+    await asyncio.sleep(randint(10, 200) / 1000)
+    raise HTTPException(
+        status_code=400, detail="Incorrect username or password"
+    )
+
+
+class PersistentSecurityPolicy(ISecurityPolicy):
 
     cookie_name = "refresh"
+    hasher = ArgonPasswordHasher()
+    extractors = [BearerAuthPolicy]
 
     def __init__(self, iam):
         """Every session data manager receives an instance of the iam
@@ -23,6 +42,33 @@ class SessionDbManager(ISessionManager):
         poor man registry
         """
         self.iam = iam
+
+    async def login(self, username, password, request=None):
+        user_service = self.iam.get_service(IUsersStorage)
+        user = await user_service.by_email(username)
+        if not user:
+            return await invalid_user()
+
+        if user.is_active is False:
+            raise InactiveUser
+
+        valid = await self.hasher.check_password(user.password, password)
+        if valid is False:
+            return await invalid_user()
+
+        user_session = await self.create_session(user)
+        # build the response and attach a refresh_token cookie
+        data = {
+            "access_token": user_session.token,
+            "expiration": user_session.expires,
+        }
+        await events.notify(events.UserLogin(user, user_session.token))
+        response = JSONResponse(
+            content=jsonable_encoder(data),
+            headers=NO_CACHE,
+        )
+        await self.remember(user_session, response, request=request)
+        return response
 
     async def create_session(self, user) -> models.UserSession:
         """
@@ -59,8 +105,6 @@ class SessionDbManager(ISessionManager):
         return self.iam.settings
 
     async def validate(self, token) -> models.User:
-        if token.get("id") == "root":  # todo ensure password matches
-            return models.root_user
         # decode token
         try:
             _ = jwt.decode(

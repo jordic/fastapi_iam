@@ -4,6 +4,7 @@ from . import views
 from .initialize import initialize_db
 from .provider import set_provider
 from .services import pg
+from .views import admin
 from fastapi import APIRouter
 from fastapi_asyncpg import configure_asyncpg
 from functools import partial
@@ -16,10 +17,6 @@ logger = logging.getLogger("fastapi_iam")
 
 default_settings = {
     "db_schema": "",
-    "password_hasher": auth.ArgonPasswordHasher,
-    "session_manager": auth.SessionDbManager,
-    "extractors": [auth.BearerAuthPolicy, auth.BasicAuthPolicy],
-    "root_password": "12345",
     "jwt_expiration": 1 * 60 * 60,  # expiratoin in seconds
     "jwt_algorithm": "HS256",
     "jwt_secret_key": "XXXXX",
@@ -33,12 +30,14 @@ default_settings = {
         interfaces.IGroupsStorage: pg.GroupStorage,
     },
     "default_service_factory": pg.pg_service_factory,
+    "admin_routes": True,
 }
 
 
 def configure_iam(
     settings: dict[str, typing.Any],
     *,
+    security_policy: interfaces.ISecurityPolicy = auth.PersistentSecurityPolicy,
     fastapi_asyncpg: configure_asyncpg = None,
 ):
     if "jwt_secret_key" not in settings:
@@ -49,6 +48,7 @@ def configure_iam(
     iam = IAM(
         defaults,
         fastapi_asyncpg=fastapi_asyncpg,
+        security_policy=security_policy,
     )
     set_provider(iam)
     return iam
@@ -60,11 +60,13 @@ class IAM(interfaces.IIAM):
         settings,
         *,
         fastapi_asyncpg=None,
+        security_policy=None,
         api_router_cls=APIRouter,
     ):
         self.router = api_router_cls()
         self.settings = settings
         self.db = fastapi_asyncpg
+        self.security_policy = security_policy
         self.services = settings["services"]
         self.services_factory = {}
         self.initialize_iam_db = partial(initialize_db, settings)
@@ -82,11 +84,17 @@ class IAM(interfaces.IIAM):
         self.router.add_api_route("/renew", views.renew, methods=["POST"])
         self.router.add_api_route("/whoami", views.whoami)
 
+        if self.settings["admin_routes"] is True:
+            admin.setup_routes(self.router)
+
     @property
     def pool(self):
         return self.db.pool
 
-    def get_session_manager(self) -> interfaces.ISessionManager:
+    def get_security_policy(self):
+        return self.security_policy(self)
+
+    def get_session_manager(self) -> interfaces.ISecurityPolicy:
         return self.settings["session_manager"](self)
 
     def get_service(self, service_type):
