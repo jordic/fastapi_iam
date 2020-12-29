@@ -72,6 +72,13 @@ class UserCreate(pd.BaseModel):
     is_admin: typing.Optional[bool]
 
 
+class UserUpdate(UserCreate):
+    email: Optional[str]
+    username: Optional[str]
+    groups: Optional[typing.List[str]]
+    props: Optional[typing.Dict[str, typing.Any]]
+
+
 class UserSession(pd.BaseModel):
     user_id: int
     token: str

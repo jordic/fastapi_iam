@@ -57,3 +57,27 @@ async def test_create_group(users):
 
     res = await logged.get("/auth/groups")
     assert res.json() == ["group1"]
+
+
+async def test_update_user(users):
+    client, _ = users
+    logged = await testing.login(client, "admin@test.com", "asdf1")
+
+    res = await logged.get("/auth/users?q=inactive%")
+    assert res.status_code == 200
+    user_id = res.json()["items"][0]["user_id"]
+    res = await logged.patch(
+        f"/auth/users/{user_id}", json={"is_active": True, "password": "asdf"}
+    )
+    assert res.status_code == 200
+    assert res.json()["email"] == "inactive@test.com"
+    updated = await testing.login(client, "inactive@test.com", "asdf")
+    res = await updated.get("/auth/whoami")
+    assert res.status_code == 200
+
+    # add a group
+    await logged.post("/auth/groups", json={"name": "group1"})
+    res = await logged.patch(
+        f"/auth/users/{user_id}", json={"groups": ["group1"]}
+    )
+    assert "group1" in res.json()["groups"]

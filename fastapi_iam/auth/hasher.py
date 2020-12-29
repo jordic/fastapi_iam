@@ -9,7 +9,7 @@ ph = argon2.PasswordHasher()
 class ArgonPasswordHasher:
     algorithm = "argon2"
 
-    async def hash_password(self, password, salt=None):
+    async def hash_password(self, password):
         if isinstance(password, str):
             password = password.encode("utf-8")
 

@@ -1,5 +1,6 @@
 from ... import models
 from .base import BaseRepository
+from fastapi.encoders import jsonable_encoder
 from fastapi_asyncpg import sql
 from typing import Optional
 
@@ -10,7 +11,7 @@ class UserStorage(BaseRepository):
     async def create(self, user: models.UserCreate) -> models.User:
         data = user.dict(exclude_none=True)
         result = await sql.insert(self.db, f"{self.schema}users", data)
-        return await self.by_id(result["user_id"])
+        return models.PublicUser(**dict(await self.by_id(result["user_id"])))
 
     async def by_email(self, email: str) -> Optional[models.User]:
         q = f"{self.base_query()} WHERE email=$1 GROUP BY u.user_id"
@@ -91,11 +92,23 @@ class UserStorage(BaseRepository):
             "total": total,
             "page": page,
             "limit": limit,
-            "items": [self.to_model(res) for res in results],
+            "items": [models.PublicUser(**dict(res)) for res in results],
         }
 
     async def update_user(self, user_id: int, data):
-        pass
+        if "props" in data:
+            data["props"] = jsonable_encoder(data["props"])
+
+        user = await self.by_id(user_id)
+        groups = data.pop("groups", None)
+        async with self.db.transaction():
+            if len(data) > 0:
+                await sql.update(
+                    self.db, f"{self.schema}users", {"user_id": user_id}, data
+                )
+            if groups:
+                await self.update_groups(user, groups)
+            return models.PublicUser(**dict(await self.by_id(user_id)))
 
     async def update_groups(
         self, user: models.User, groups: typing.List[str]

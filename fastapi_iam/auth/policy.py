@@ -32,7 +32,7 @@ async def invalid_user():
 class PersistentSecurityPolicy(ISecurityPolicy):
 
     cookie_name = "refresh"
-    hasher = ArgonPasswordHasher()
+    hasher: ArgonPasswordHasher = ArgonPasswordHasher()
     extractors = [BearerAuthPolicy]
 
     def __init__(self, iam):

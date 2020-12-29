@@ -28,7 +28,6 @@ async def test_login(users):
 
     assert validated["email"] == "test@test.com"
     assert "staff" in validated["principals"]
-    assert "user:1" in validated["principals"]
     assert validated["is_admin"] is False
 
     assert "refresh" in res.cookies

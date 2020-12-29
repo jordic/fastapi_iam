@@ -1,9 +1,10 @@
+from .. import models
+from ..interfaces import IGroupsStorage
+from ..interfaces import IUsersStorage
+from ..provider import has_principal
 from ..provider import IAMProvider
 from fastapi import Depends
-from ..provider import has_principal
-from ..interfaces import IUsersStorage
-from ..interfaces import IGroupsStorage
-from .. import models
+from fastapi.exceptions import HTTPException
 from typing import Optional
 
 
@@ -34,15 +35,40 @@ async def get_users(
     return await users_service.search(**query)
 
 
+async def get_user(
+    user_id: int,
+    iam=Depends(IAMProvider),
+    principals=Depends(has_principal("admin")),
+):
+    ur = iam.get_service(IUsersStorage)
+    obj = await ur.by_id(user_id)
+    if not obj:
+        raise HTTPException(404)
+    return models.PublicUser(**dict(obj))
+
+
 async def create_user(user: models.UserCreate, iam=Depends(IAMProvider)):
     res = await models.create_user(iam, user)
     return res
 
 
 async def update_user(
-    iam=Depends(IAMProvider), principals=Depends(has_principal("admin"))
+    user: models.UserUpdate,
+    user_id: int,
+    iam=Depends(IAMProvider),
+    principals=Depends(has_principal("admin")),
 ):
-    pass
+    ur = iam.get_service(IUsersStorage)
+    obj = await ur.by_id(user_id)
+    if obj is None:
+        raise HTTPException(404, detail="user_not_found")
+
+    data = user.dict(exclude_unset=True)
+    if "password" in data:
+        security_policy = iam.get_security_policy()
+        hasher = security_policy.hasher
+        data["password"] = await hasher.hash_password(data["password"])
+    return await ur.update_user(user_id, data)
 
 
 async def create_group(
@@ -67,6 +93,7 @@ def setup_routes(router):
     router.add_api_route(
         "/users", create_user, methods=["POST"], status_code=201
     )
+    router.add_api_route("/users/{user_id:int}", update_user, methods=["PATCH"])
     router.add_api_route(
         "/groups", create_group, methods=["POST"], status_code=201
     )
