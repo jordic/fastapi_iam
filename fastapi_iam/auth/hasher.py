@@ -16,12 +16,12 @@ class ArgonPasswordHasher:
         hashed_password = await run_in_threadpool(ph.hash, password)
         return hashed_password
 
-    @lru_cache(100)
     async def check_password(self, token, password) -> bool:
         return await run_in_threadpool(
             self.argon2_password_validator, token, password
         )
 
+    @lru_cache(100)
     def argon2_password_validator(self, token, password):
         try:
             return ph.verify(token, password)

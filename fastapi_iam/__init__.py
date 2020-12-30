@@ -31,6 +31,7 @@ default_settings = {
     },
     "default_service_factory": pg.pg_service_factory,
     "admin_routes": True,
+    "refresh_token_secret_key": "xxxxx",  # just in case using secure cookie tokens
 }
 
 

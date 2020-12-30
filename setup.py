@@ -23,6 +23,7 @@ setup(
         "argon2-cffi",
         "PyJWT>=2.0.0",
         "python-multipart",
+        "itsdangerous==1.1.0",
     ],
     package_data={"fastapi_iam": ["py.typed"]},
     extras_require={

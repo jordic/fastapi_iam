@@ -6,10 +6,13 @@ from .encoders import JWTToken
 from .extractors import BearerAuthPolicy
 from .hasher import ArgonPasswordHasher
 from fastapi.exceptions import HTTPException
+from itsdangerous.exc import BadSignature
+from itsdangerous.url_safe import URLSafeSerializer
 from random import randint
 
 import asyncio
 import datetime
+import time
 import typing
 
 InvalidUser = HTTPException(status_code=403, detail="invalid_user")
@@ -170,13 +173,21 @@ class PersistentSecurityPolicy:
         )
 
 
+class InvalidRefreshToken(Exception):
+    pass
+
+
 class JWTSecurityPolicy(PersistentSecurityPolicy):
-    """ A security policy that DOES NOT store sessions on storage """
+    """
+    A security policy that DOES NOT store sessions on storage
+    Refresh token is a signed cookie that keeps the user_id and expiration date
+    """
 
     async def create_session(self, user):
         encoder = self.encoder(self.cfg)
         token, expire = await encoder.create_access_token(user)
-        refresh_token, refresh_expiration = encoder.create_refresh_token()
+        # we must crypt the user data into the token to be able to refresh it
+        refresh_token, refresh_expiration = self.create_refresh_token(user)
         us = models.UserSession(
             user_id=user.user_id,
             token=token,
@@ -199,3 +210,52 @@ class JWTSecurityPolicy(PersistentSecurityPolicy):
         if user is None:
             raise InvalidUser
         return user
+
+    def create_refresh_token(self, user):
+        expire = datetime.datetime.utcnow() + datetime.timedelta(
+            seconds=self.cfg["session_expiration"]
+        )
+        data = {
+            "user_id": user.user_id,
+            "exp": int(time.mktime(expire.timetuple())),
+        }
+        return self.serializer.dumps(data), expire
+
+    def validate_refresh_token(self, token) -> int:
+        try:
+            data = self.serializer.loads(token)
+        except BadSignature:
+            raise InvalidRefreshToken()
+        # ensure expiration
+        expiration = datetime.datetime.fromtimestamp(data["exp"])
+        if expiration < datetime.datetime.utcnow():
+            raise InvalidRefreshToken()
+        return data["user_id"]
+
+    @property
+    def serializer(self):
+        return URLSafeSerializer(self.cfg["refresh_token_secret_key"])
+
+    async def refresh(self, token):
+        try:
+            user_id = self.validate_refresh_token(token)
+        except InvalidRefreshToken:
+            raise InvalidUser
+        users_repo = self.iam.get_service(IUsersStorage)
+        user = await users_repo.by_id(user_id)
+        if not user:
+            raise InvalidUser
+
+        rt = rte = None
+        if self.cfg["rotate_refresh_tokens"] is True:
+            rt, rte = self.create_refresh_token(user)
+
+        encoder = self.encoder(self.cfg)
+        new_token, new_expire = await encoder.create_access_token(user)
+        return models.UserSession(
+            user_id=user.user_id,
+            token=new_token,
+            expires=new_expire,
+            refresh_token=rt,
+            refresh_token_expires=rte,
+        )
