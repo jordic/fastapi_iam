@@ -1,6 +1,8 @@
 from .. import models
 from ..interfaces import ISessionStorage
 from ..interfaces import IUsersStorage
+from .encoders import InvalidToken
+from .encoders import JWTToken
 from .extractors import BearerAuthPolicy
 from .hasher import ArgonPasswordHasher
 from fastapi.exceptions import HTTPException
@@ -8,10 +10,7 @@ from random import randint
 
 import asyncio
 import datetime
-import jwt
-import time
 import typing
-import uuid
 
 InvalidUser = HTTPException(status_code=403, detail="invalid_user")
 ExpiredToken = HTTPException(status_code=417, detail="invalid_user")
@@ -28,17 +27,21 @@ async def invalid_user():
 
 
 class PersistentSecurityPolicy:
+    """
+    A Security policy that stores tokens on the storage
+    Token validation is done querying the existence of the token on the db
+    Tokens could be invalidated removing it from the storage
+    A refresh cookie is emmited that allows to refresh the token after expiration
+      cookie refresh expiration is also configurable
+    refresh_token rotation could also be configured from main settings
+    """
 
     cookie_name = "refresh"
     hasher: ArgonPasswordHasher = ArgonPasswordHasher()
     extractors = [BearerAuthPolicy]
+    encoder = JWTToken
 
     def __init__(self, iam):
-        """Every session data manager receives an instance of the iam
-        preconfigured app. This way, you can wire dependencies from the
-        instantiation, and use the iam instance (singleton) as a
-        poor man registry
-        """
         self.iam = iam
 
     async def login(
@@ -67,8 +70,9 @@ class PersistentSecurityPolicy:
         creates a sesssion, makes a token, and stores on the db.
         Also fabricates a token to be usable on the refreshtoken endpoint
         """
-        token, expire = await self.create_access_token(user)
-        refresh_token, refresh_expiration = self.get_new_refresh_token()
+        encoder = self.encoder(self.cfg)
+        token, expire = await encoder.create_access_token(user)
+        refresh_token, refresh_expiration = encoder.create_refresh_token()
         us = models.UserSession(
             user_id=user.user_id,
             token=token,
@@ -80,13 +84,6 @@ class PersistentSecurityPolicy:
         await session_service.create(us)
         return us
 
-    def get_new_refresh_token(self):
-        rt = uuid.uuid4().hex
-        rte = datetime.datetime.utcnow() + datetime.timedelta(
-            seconds=self.cfg["session_expiration"]
-        )
-        return rt, rte
-
     @property
     def schema(self):
         db_schema = self.iam.settings["db_schema"]
@@ -97,17 +94,11 @@ class PersistentSecurityPolicy:
         return self.iam.settings
 
     async def validate(self, token) -> models.User:
+        encoder = self.encoder(self.cfg)
         # decode token
         try:
-            _ = jwt.decode(
-                token.get("token"),
-                self.iam.settings["jwt_secret_key"],
-                algorithms=self.iam.settings["jwt_algorithm"],
-            )
-        except (
-            jwt.DecodeError,
-            jwt.ExpiredSignatureError,
-        ):
+            await encoder.validate(token.get("token"))
+        except InvalidToken:
             raise InvalidUser
 
         user_service = self.iam.get_service(IUsersStorage)
@@ -115,23 +106,6 @@ class PersistentSecurityPolicy:
         if user is None:
             raise InvalidUser
         return user
-
-    async def create_access_token(self, user: models.User):
-        expiration = self.cfg["jwt_expiration"]
-        to_encode = {"sub": user.user_id}
-        # TODO: add func to be able to customize how claims are processed
-        to_encode.update(user.get_jwt_claims())
-        expire = datetime.datetime.utcnow() + datetime.timedelta(
-            seconds=expiration
-        )
-        expire_unixts = int(time.mktime(expire.timetuple()))
-        to_encode.update({"exp": expire_unixts})
-        encoded_jwt = jwt.encode(
-            to_encode,
-            self.cfg["jwt_secret_key"],
-            algorithm=self.cfg["jwt_algorithm"],
-        )
-        return encoded_jwt, expire
 
     async def refresh(self, token) -> models.UserSession:
         """creates a new access_token and updates it on the storage.
@@ -151,14 +125,16 @@ class PersistentSecurityPolicy:
         if user is None:
             raise InvalidUser
 
+        encoder = self.encoder(self.cfg)
+
         # handle refresh token rotation
         kwargs = {}
         rt = rte = None
         if self.cfg["rotate_refresh_tokens"] is True:
-            rt, rte = self.get_new_refresh_token()
+            rt, rte = encoder.create_refresh_token()
             kwargs = {"new_rt": rt, "new_rte": rte}
 
-        new_token, new_expire = await self.create_access_token(user)
+        new_token, new_expire = await encoder.create_access_token(user)
         # update storage token
         await sess_repo.update_token(token, new_token, new_expire, **kwargs)
         return models.UserSession(
@@ -192,3 +168,34 @@ class PersistentSecurityPolicy:
             max_age=max_age,
             domain=domain,
         )
+
+
+class JWTSecurityPolicy(PersistentSecurityPolicy):
+    """ A security policy that DOES NOT store sessions on storage """
+
+    async def create_session(self, user):
+        encoder = self.encoder(self.cfg)
+        token, expire = await encoder.create_access_token(user)
+        refresh_token, refresh_expiration = encoder.create_refresh_token()
+        us = models.UserSession(
+            user_id=user.user_id,
+            token=token,
+            expires=expire,
+            refresh_token=refresh_token,
+            refresh_token_expires=refresh_expiration,
+        )
+        return us
+
+    async def validate(self, token):
+        encoder = self.encoder(self.cfg)
+        # decode token
+        try:
+            result = await encoder.validate(token.get("token"))
+        except InvalidToken:
+            raise InvalidUser
+
+        user_service = self.iam.get_service(IUsersStorage)
+        user = await user_service.by_id(result["sub"])
+        if user is None:
+            raise InvalidUser
+        return user
