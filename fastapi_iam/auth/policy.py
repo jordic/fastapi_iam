@@ -1,5 +1,4 @@
 from .. import models
-from ..interfaces import ISecurityPolicy
 from ..interfaces import ISessionStorage
 from ..interfaces import IUsersStorage
 from .extractors import BearerAuthPolicy
@@ -10,6 +9,7 @@ from random import randint
 import asyncio
 import datetime
 import jwt
+import time
 import typing
 import uuid
 
@@ -27,7 +27,7 @@ async def invalid_user():
     )
 
 
-class PersistentSecurityPolicy(ISecurityPolicy):
+class PersistentSecurityPolicy:
 
     cookie_name = "refresh"
     hasher: ArgonPasswordHasher = ArgonPasswordHasher()
@@ -105,8 +105,8 @@ class PersistentSecurityPolicy(ISecurityPolicy):
                 algorithms=self.iam.settings["jwt_algorithm"],
             )
         except (
-            jwt.exceptions.DecodeError,
-            jwt.exceptions.ExpiredSignatureError,
+            jwt.DecodeError,
+            jwt.ExpiredSignatureError,
         ):
             raise InvalidUser
 
@@ -119,17 +119,19 @@ class PersistentSecurityPolicy(ISecurityPolicy):
     async def create_access_token(self, user: models.User):
         expiration = self.cfg["jwt_expiration"]
         to_encode = {"sub": user.user_id}
+        # TODO: add func to be able to customize how claims are processed
         to_encode.update(user.get_jwt_claims())
         expire = datetime.datetime.utcnow() + datetime.timedelta(
             seconds=expiration
         )
-        to_encode.update({"exp": expire})
+        expire_unixts = int(time.mktime(expire.timetuple()))
+        to_encode.update({"exp": expire_unixts})
         encoded_jwt = jwt.encode(
             to_encode,
             self.cfg["jwt_secret_key"],
             algorithm=self.cfg["jwt_algorithm"],
         )
-        return encoded_jwt.decode("utf-8"), expire
+        return encoded_jwt, expire
 
     async def refresh(self, token) -> models.UserSession:
         """creates a new access_token and updates it on the storage.

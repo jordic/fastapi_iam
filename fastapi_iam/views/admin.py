@@ -47,7 +47,11 @@ async def get_user(
     return models.PublicUser(**dict(obj))
 
 
-async def create_user(user: models.UserCreate, iam=Depends(IAMProvider)):
+async def create_user(
+    user: models.UserCreate,
+    iam=Depends(IAMProvider),
+    principals=Depends(has_principal("admin")),
+):
     res = await models.create_user(iam, user)
     return res
 
@@ -93,6 +97,7 @@ def setup_routes(router):
     router.add_api_route(
         "/users", create_user, methods=["POST"], status_code=201
     )
+    router.add_api_route("/users/{user_id:int}", get_user)
     router.add_api_route("/users/{user_id:int}", update_user, methods=["PATCH"])
     router.add_api_route(
         "/groups", create_group, methods=["POST"], status_code=201

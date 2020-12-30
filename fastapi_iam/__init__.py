@@ -35,9 +35,9 @@ default_settings = {
 
 
 def configure_iam(
-    settings: dict[str, typing.Any],
+    settings: typing.Dict[str, typing.Any],
     *,
-    security_policy: interfaces.ISecurityPolicy = auth.PersistentSecurityPolicy,
+    security_policy=auth.PersistentSecurityPolicy,
     fastapi_asyncpg: configure_asyncpg = None,
 ):
     if "jwt_secret_key" not in settings:
@@ -54,7 +54,7 @@ def configure_iam(
     return iam
 
 
-class IAM(interfaces.IIAM):
+class IAM:
     def __init__(
         self,
         settings,

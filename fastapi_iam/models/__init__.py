@@ -6,8 +6,7 @@ import pydantic as pd
 import typing
 
 
-class PublicUser(pd.BaseModel):
-    user_id: typing.Optional[int]
+class BaseUser(pd.BaseModel):
     username: str
     email: str
     is_staff: bool
@@ -16,6 +15,10 @@ class PublicUser(pd.BaseModel):
     date_joined: typing.Optional[datetime.datetime]
     last_login: typing.Optional[datetime.datetime]
     groups: typing.List[str] = []
+
+
+class PublicUser(BaseUser):
+    user_id: typing.Optional[int]
 
 
 root_user = PublicUser(
@@ -41,7 +44,8 @@ anonymous_user = PublicUser(
 )
 
 
-class User(PublicUser):
+class User(BaseUser):
+    user_id: int
     password: str
     token: Optional[str]  # used to carry current auth token
 
@@ -72,11 +76,15 @@ class UserCreate(pd.BaseModel):
     is_admin: typing.Optional[bool]
 
 
-class UserUpdate(UserCreate):
+class UserUpdate(pd.BaseModel):
     email: Optional[str]
     username: Optional[str]
     groups: Optional[typing.List[str]]
     props: Optional[typing.Dict[str, typing.Any]]
+    password: typing.Optional[str]
+    is_staff: typing.Optional[bool]
+    is_active: typing.Optional[bool]
+    is_admin: typing.Optional[bool]
 
 
 class UserSession(pd.BaseModel):

@@ -117,3 +117,14 @@ class ISessionStorage(Protocol):
         self, refresh_token, token, expires, new_rt=None, new_rte=None
     ):
         pass
+
+
+class ITokenStorage(Protocol):
+    async def create_token_verification(self, user):
+        pass
+
+    async def create_token_login(self, email):
+        pass
+
+    async def create_token_forgot_pass(self, email):
+        pass
